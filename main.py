@@ -9,7 +9,8 @@ from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from sqlalchemy import create_engine, Column, String, Integer, Numeric, DateTime, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from dotenv import load_dotenv
-
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 # --- LOAD ENV ---
 load_dotenv()
 
@@ -23,6 +24,7 @@ GRAPH_API_VERSION = "v20.0"
 
 # --- DATABASE ---
 DATABASE_URL = "sqlite:///kiobite.db"
+templates = Jinja2Templates(directory="templates")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -355,7 +357,10 @@ def list_orders(db: Session = Depends(get_db)):
         }
         for o in orders
     ]
-
+# --- ADMIN DASHBOARD ---
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
 
 # --- HEALTH CHECK ---
 @app.get("/health")
