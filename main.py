@@ -360,7 +360,7 @@ def list_orders(db: Session = Depends(get_db)):
 # --- ADMIN DASHBOARD ---
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+        return templates.TemplateResponse(request=request, name="dashboard.html")
 
 # --- HEALTH CHECK ---
 @app.get("/health")
