@@ -1,1 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KioBite Admin Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 20px; }
+  .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #334155; }
+  .logo { font-size: 24px; font-weight: 700; color: #f97316; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #10b981; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat { background: #1e293b; padding: 20px; border-radius: 12px; border: 1px solid #334155; }
+  .stat-label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .stat-value { font-size: 28px; font-weight: 700; color: #f8fafc; }
+  .stat-value.orange { color: #f97316; }
+  .stat-value.green { color: #10b981; }
+  .controls { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  button { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+  button:hover { background: #334155; }
+  button.active { background: #f97316; border-color: #f97316; color: white; }
+  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
+  th { background: #0f172a; padding: 14px 16px; text-align: left; font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  td { padding: 14px 16px; border-top: 1px solid #334155; font-size: 14px; }
+  tr:hover { background: #334155; }
+  .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .badge-paid { background: #10b981; color: white; }
+  .badge-pending { background: #f59e0b; color: white; }
+  .pickup-code { font-family: 'Courier New', monospace; background: #0f172a; padding: 4px 8px; border-radius: 4px; color: #f97316; font-weight: 700; letter-spacing: 1px; }
+  .empty { text-align: center; padding: 60px 20px; color: #64748b; }
+  .refresh-note { font-size: 12px; color: #64748b; margin-top: 16px; text-align: right; }
+  .items { font-size: 13px; color: #cbd5e1; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🍪 KioBite Admin</div>
+    <div class="status">
+      <div class="status-dot"></div>
+      <span id="status-text">Live</span>
+    </div>
+  </div>
 
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">Total Orders</div>
+      <div class="stat-value" id="total-orders">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Revenue (Paid)</div>
+      <div class="stat-value green" id="revenue">₹0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Pending Payment</div>
+      <div class="stat-value orange" id="pending">0</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Today's Orders</div>
+      <div class="stat-value" id="today">0</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="active" onclick="filterOrders('all', this)">All Orders</button>
+    <button onclick="filterOrders('PAID', this)">Paid</button>
+    <button onclick="filterOrders('PENDING', this)">Pending</button>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Order #</th>
+        <th>Phone</th>
+        <th>Items</th>
+        <th>Total</th>
+        <th>Status</th>
+        <th>Pickup Code</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="orders-body">
+      <tr><td colspan="7" class="empty">Loading orders...</td></tr>
+    </tbody>
+  </table>
+
+  <div class="refresh-note">Auto-refresh every 30 seconds • Last updated: <span id="last-update">-</span></div>
+
+<script>
+  let allOrders = [];
+  let currentFilter = 'all';
+
+  async function loadOrders() {
+    try {
+      const res = await fetch('/orders');
+      const data = await res.json();
+      allOrders = data;
+      renderStats();
+      renderOrders();
+      document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+      document.getElementById('status-text').textContent = 'Live';
+    } catch (e) {
+      document.getElementById('status-text').textContent = 'Error';
+      console.error(e);
+    }
+  }
+
+  function renderStats() {
+    const total = allOrders.length;
+    const revenue = allOrders.filter(o => o.status === 'PAID').reduce((sum, o) => sum + o.total, 0);
+    const pending = allOrders.filter(o => o.status === 'PENDING').length;
+    const today = new Date().toDateString();
+    const todayCount = allOrders.filter(o => new Date(o.created_at).toDateString() === today).length;
+
+    document.getElementById('total-orders').textContent = total;
+    document.getElementById('revenue').textContent = '₹' + revenue.toFixed(0);
+    document.getElementById('pending').textContent = pending;
+    document.getElementById('today').textContent = todayCount;
+  }
+
+  function renderOrders() {
+    const tbody = document.getElementById('orders-body');
+    let filtered = allOrders;
+    if (currentFilter !== 'all') {
+      filtered = allOrders.filter(o => o.status === currentFilter);
+    }
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">No orders to display</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(o => {
+      const itemsStr = Object.entries(o.items).map(([pid, qty]) => `Item ${pid} × ${qty}`).join(', ');
+      const statusClass = o.status === 'PAID' ? 'badge-paid' : 'badge-pending';
+      const time = new Date(o.created_at).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' });
+      return `
+        <tr>
+          <td><strong>#${o.order_id}</strong></td>
+          <td>${o.phone}</td>
+          <td class="items">${itemsStr}</td>
+          <td><strong>₹${o.total.toFixed(0)}</strong></td>
+          <td><span class="badge ${statusClass}">${o.status}</span></td>
+          <td><span class="pickup-code">${o.pickup_code}</span></td>
+          <td>${time}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function filterOrders(filter, btn) {
+    currentFilter = filter;
+    document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderOrders();
+  }
+
+  loadOrders();
+  setInterval(loadOrders, 30000);
+</script>
+</body>
+</html>
