@@ -11,8 +11,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from dotenv import load_dotenv
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-# --- LOAD ENV ---
 import razorpay
+
 load_dotenv()
 
 # --- CONFIG ---
@@ -23,10 +23,12 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "KIOBITE_SECURE_TOKEN_2026")
 PAYMENT_BASE_URL = os.getenv("PAYMENT_BASE_URL", "https://kiobite.onrender.com")
 GRAPH_API_VERSION = "v20.0"
 
-# --- DATABASE ---
+# --- RAZORPAY CONFIG ---
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
 RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
+
+# --- DATABASE ---
 DATABASE_URL = "sqlite:///kiobite.db"
 templates = Jinja2Templates(directory="templates")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -193,7 +195,6 @@ async def handle_incoming_whatsapp(request: Request, db: Session = Depends(get_d
         changes = entry["changes"][0]
         value = changes["value"]
 
-        # Ignore status updates (delivery/read receipts)
         if "statuses" in value:
             return {"status": "IGNORED_STATUS"}
 
@@ -203,14 +204,12 @@ async def handle_incoming_whatsapp(request: Request, db: Session = Depends(get_d
         message = value["messages"][0]
         customer_phone = message["from"]
 
-        # Only handle text messages
         if message.get("type") != "text":
             send_whatsapp_message(customer_phone, "Please send a text message. Reply *menu* to see options.")
             return {"status": "NON_TEXT"}
 
         user_msg_body = message["text"]["body"].strip().lower()
 
-        # Register user
         if not db.query(User).filter(User.phone_number == customer_phone).first():
             db.add(User(phone_number=customer_phone))
             db.commit()
@@ -251,30 +250,40 @@ async def handle_incoming_whatsapp(request: Request, db: Session = Depends(get_d
                 if pid in PRODUCT_CATALOG
             )
             pickup_code = generate_pickup_code()
+
+            # Create Razorpay order
+            razorpay_order = razorpay_client.order.create({
+                "amount": int(total * 100),
+                "currency": "INR",
+                "receipt": f"kio_{secrets.token_hex(4)}",
+                "notes": {
+                    "pickup_code": pickup_code,
+                    "customer_phone": customer_phone
+                }
+            })
+
             order = Order(
                 phone_number=customer_phone,
                 items_json=items,
                 total_amount=total,
                 pickup_code=pickup_code,
-                payment_status="PENDING"
+                payment_status="PENDING",
+                payment_link=razorpay_order["id"]
             )
             db.add(order)
             db.commit()
             db.refresh(order)
 
-            # Clear cart
             cart.items_json = {}
             db.commit()
 
-            payment_link = f"{PAYMENT_BASE_URL}/payment/{order.order_id}"
-            order.payment_link = payment_link
-            db.commit()
+            payment_url = f"{PAYMENT_BASE_URL}/payment/{order.order_id}"
 
             msg = (
                 f"🧾 Order #{order.order_id} created!\n\n"
                 f"Total: Rs.{total:.2f}\n"
                 f"Pickup Code (after payment): *{pickup_code}*\n\n"
-                f"💳 Pay here: {payment_link}\n\n"
+                f"💳 Pay securely here: {payment_url}\n\n"
                 f"After payment, you will receive a confirmation."
             )
             send_whatsapp_message(customer_phone, msg)
@@ -310,12 +319,13 @@ async def handle_incoming_whatsapp(request: Request, db: Session = Depends(get_d
         return {"status": "IGNORED", "reason": str(e)}
 
 
-# --- ROOT POST (NGROK BYPASS) ---
+# --- ROOT POST ---
 @app.post("/")
 async def handle_root_post(request: Request, db: Session = Depends(get_db)):
     headers = {"ngrok-skip-browser-warning": "true", "Bypass-Tunnel-Reminder": "true"}
     response_data = await handle_incoming_whatsapp(request, db)
     return Response(content=json.dumps(response_data), media_type="application/json", headers=headers)
+
 
 # --- RAZORPAY PAYMENT ENDPOINT ---
 @app.get("/payment/{order_id}", response_class=HTMLResponse)
@@ -372,7 +382,7 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
             order.payment_status = "PAID"
             db.commit()
             msg = (
-                f"Payment received for Order #{order.order_id}!\n\n"
+                f"✅ Payment received for Order #{order.order_id}!\n\n"
                 f"Your pickup code is: *{order.pickup_code}*\n\n"
                 f"Show this code at the KioBite kiosk to collect your items."
             )
@@ -397,10 +407,13 @@ def list_orders(db: Session = Depends(get_db)):
         }
         for o in orders
     ]
+
+
 # --- ADMIN DASHBOARD ---
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(request: Request):
-        return templates.TemplateResponse(request=request, name="dashboard.html")
+    return templates.TemplateResponse(request=request, name="dashboard.html")
+
 
 # --- HEALTH CHECK ---
 @app.get("/health")
