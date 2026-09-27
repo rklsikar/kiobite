@@ -12,17 +12,21 @@ from dotenv import load_dotenv
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 # --- LOAD ENV ---
+import razorpay
 load_dotenv()
 
 # --- CONFIG ---
-WHATSAPP_PHONE_NUMBER_ID = "1325736767285456"
-WHATSAPP_ACCESS_TOKEN = "EAAWrtPL1P0gBSoUt9ESoDevvTZCOgDaWolxYD6f16me0iikEehZCZAqY9uBOYmgZAfsBxeMVRiouDKlfrpVsAxDdFZCeTF0GrSwOVuEChQZAbgWqYiaYjs52hCd5aCRht0huhUgo0MwaYNi3aiQKofR1RSd1MDbTavzVK4qi98MZA6Vjh0m5exZADkAGSCcoHjpWowZDZD"
-WHATSAPP_APP_SECRET = "6e8e62de67728b8040b81e8420810467"
-VERIFY_TOKEN = "KIOBITE_SECURE_TOKEN_2026"
-PAYMENT_BASE_URL = "https://kiobite.onrender.com"
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "1325736767285456")
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN")
+WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET")
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "KIOBITE_SECURE_TOKEN_2026")
+PAYMENT_BASE_URL = os.getenv("PAYMENT_BASE_URL", "https://kiobite.onrender.com")
 GRAPH_API_VERSION = "v20.0"
 
 # --- DATABASE ---
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
 DATABASE_URL = "sqlite:///kiobite.db"
 templates = Jinja2Templates(directory="templates")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -41,7 +45,7 @@ PRODUCT_CATALOG = {
 
 # --- APP INITIALIZATION ---
 app = FastAPI(title="KioBite Tech Engine")
-
+razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 # --- DATABASE MODELS ---
 class User(Base):
