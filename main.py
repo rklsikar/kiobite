@@ -251,7 +251,6 @@ async def handle_incoming_whatsapp(request: Request, db: Session = Depends(get_d
             )
             pickup_code = generate_pickup_code()
 
-            # Create Razorpay order
             razorpay_order = razorpay_client.order.create({
                 "amount": int(total * 100),
                 "currency": "INR",
@@ -336,15 +335,18 @@ async def payment_page(request: Request, order_id: int, db: Session = Depends(ge
     if order.payment_status == "PAID":
         return HTMLResponse("<h1 style='font-family:sans-serif;text-align:center;padding:50px;'>Already paid! Check WhatsApp for pickup code.</h1>")
 
-    return templates.TemplateResponse("payment.html", {
-        "request": request,
-        "razorpay_key_id": RAZORPAY_KEY_ID,
-        "amount_paise": int(float(order.total_amount) * 100),
-        "order_id": order.order_id,
-        "razorpay_order_id": order.payment_link,
-        "customer_phone": order.phone_number,
-        "callback_url": f"{PAYMENT_BASE_URL}/payment-success/{order.order_id}"
-    })
+    return templates.TemplateResponse(
+        request=request,
+        name="payment.html",
+        context={
+            "razorpay_key_id": RAZORPAY_KEY_ID,
+            "amount_paise": int(float(order.total_amount) * 100),
+            "order_id": order.order_id,
+            "razorpay_order_id": order.payment_link,
+            "customer_phone": order.phone_number,
+            "callback_url": f"{PAYMENT_BASE_URL}/payment-success/{order.order_id}"
+        }
+    )
 
 
 @app.get("/payment-success/{order_id}", response_class=HTMLResponse)
