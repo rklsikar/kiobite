@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KioBite Payment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; text-align: center; }
+        .box { padding: 40px; }
+        h1 { color: #f97316; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h1>🍪 KioBite</h1>
+        <p>Opening secure payment...</p>
+        <p>Please wait, do not close this window.</p>
+    </div>
+    <script>
+        var options = {
+            "key": "{{ razorpay_key_id }}",
+            "amount": "{{ amount_paise }}",
+            "currency": "INR",
+            "name": "KioBite",
+            "description": "Order #{{ order_id }}",
+            "order_id": "{{ razorpay_order_id }}",
+            "callback_url": "{{ callback_url }}",
+            "prefill": { "contact": "{{ customer_phone }}" },
+            "theme": { "color": "#f97316" }
+        };
+        var rzp = new Razorpay(options);
+        rzp.open();
+        rzp.on('payment.failed', function (response){
+            alert("Payment failed: " + response.error.description);
+        });
+    </script>
+</body>
+</html>
