@@ -4,3 +4,4 @@ sqlalchemy
 requests
 python-dotenv
 jinja2
+razorpay
