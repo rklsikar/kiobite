@@ -317,32 +317,68 @@ async def handle_root_post(request: Request, db: Session = Depends(get_db)):
     response_data = await handle_incoming_whatsapp(request, db)
     return Response(content=json.dumps(response_data), media_type="application/json", headers=headers)
 
-
-# --- MOCK PAYMENT ENDPOINT ---
-@app.get("/payment/{order_id}")
-async def mock_payment(order_id: int, db: Session = Depends(get_db)):
+# --- RAZORPAY PAYMENT ENDPOINT ---
+@app.get("/payment/{order_id}", response_class=HTMLResponse)
+async def payment_page(request: Request, order_id: int, db: Session = Depends(get_db)):
     order = db.query(Order).filter(Order.order_id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     if order.payment_status == "PAID":
-        return {"status": "ALREADY_PAID", "pickup_code": order.pickup_code}
+        return HTMLResponse("<h1 style='font-family:sans-serif;text-align:center;padding:50px;'>Already paid! Check WhatsApp for pickup code.</h1>")
 
-    order.payment_status = "PAID"
-    db.commit()
-
-    msg = (
-        f"✅ Payment received for Order #{order.order_id}!\n\n"
-        f"Your pickup code is: *{order.pickup_code}*\n\n"
-        f"Show this code at the KioBite kiosk to collect your items."
-    )
-    send_whatsapp_message(order.phone_number, msg)
-
-    return {
-        "status": "PAID",
+    return templates.TemplateResponse("payment.html", {
+        "request": request,
+        "razorpay_key_id": RAZORPAY_KEY_ID,
+        "amount_paise": int(float(order.total_amount) * 100),
         "order_id": order.order_id,
-        "pickup_code": order.pickup_code,
-        "message": "Payment successful. Show this code at the kiosk."
-    }
+        "razorpay_order_id": order.payment_link,
+        "customer_phone": order.phone_number,
+        "callback_url": f"{PAYMENT_BASE_URL}/payment-success/{order.order_id}"
+    })
+
+
+@app.get("/payment-success/{order_id}", response_class=HTMLResponse)
+async def payment_success(order_id: int):
+    return HTMLResponse("""
+        <html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0f172a;color:#fff;">
+        <h1>Payment Successful!</h1>
+        <p>Check WhatsApp for your pickup code.</p>
+        <p>You can close this window now.</p>
+        </body></html>
+    """)
+
+
+@app.post("/razorpay/webhook")
+async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
+    body = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature")
+    try:
+        razorpay_client.utility.verify_webhook_signature(
+            body.decode(), signature, RAZORPAY_WEBHOOK_SECRET
+        )
+    except Exception as e:
+        print(f"[ERROR] Webhook signature failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    payload = json.loads(body)
+    event = payload.get("event")
+    print(f"[RAZORPAY] Event: {event}")
+
+    if event in ["payment.captured", "order.paid"]:
+        entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+        razorpay_order_id = entity.get("order_id")
+        order = db.query(Order).filter(Order.payment_link == razorpay_order_id).first()
+        if order and order.payment_status != "PAID":
+            order.payment_status = "PAID"
+            db.commit()
+            msg = (
+                f"Payment received for Order #{order.order_id}!\n\n"
+                f"Your pickup code is: *{order.pickup_code}*\n\n"
+                f"Show this code at the KioBite kiosk to collect your items."
+            )
+            send_whatsapp_message(order.phone_number, msg)
+
+    return {"status": "ok"}
 
 
 # --- ADMIN: LIST ALL ORDERS ---
